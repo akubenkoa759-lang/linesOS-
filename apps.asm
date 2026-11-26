@@ -107,11 +107,23 @@ app_clock:
     int 0x16
     cmp al, 27
     je desktop
+    cmp ah, 1
+    je desktop
+    cmp al, 'q'
+    je desktop
+    cmp al, 'Q'
+    je desktop
     cmp al, 't'
+    je .tg
+    cmp al, 'T'
     je .tg
     cmp al, 'r'
     je .rs
+    cmp al, 'R'
+    je .rs
     cmp al, 'a'
+    je .sa
+    cmp al, 'A'
     je .sa
     jmp .cl
 .tg:
@@ -164,6 +176,8 @@ app_note:
     int 0x16
     cmp al, 27
     je desktop
+    cmp ah, 1
+    je desktop
     cmp al, 0x0D
     je .ne
     cmp al, 0x08
@@ -199,45 +213,52 @@ app_note:
     dec byte [nc]
     jmp .nl
 
-; === CALC ===
+; === CALCULATOR (ИСПРАВЛЕННЫЙ) ===
 app_calc:
     mov word [n1], 0
     mov word [n2], 0
     mov byte [op], 0
     mov byte [st_c], 0
-.rc:
+
+    ; Рисуем окно калькулятора один раз
     mov ch, 6
-    mov cl, 22
-    mov dh, 15
-    mov dl, 57
+    mov cl, 20
+    mov dh, 16
+    mov dl, 59
     mov bh, 0x70
     call box
     mov dh, 6
-    mov dl, 22
+    mov dl, 20
     mov bl, 0x1F
     mov si, t_calc
     call print_at
-    mov ch, 8
-    mov cl, 24
-    mov dh, 9
-    mov dl, 55
-    mov bh, 0x0A
-    call box
     mov dh, 11
-    mov dl, 24
+    mov dl, 22
     mov bl, 0x70
     mov si, c_h1
     call print_at
     mov dh, 13
-    mov dl, 24
+    mov dl, 22
     mov bl, 0x71
     mov si, c_h2
     call print_at
+
+.rc:
+    ; Очищаем только зеленый экранчик калькулятора
+    mov ch, 8
+    mov cl, 22
+    mov dh, 9
+    mov dl, 57
+    mov bh, 0x0A
+    call box
+
+    ; Печатаем выражение: [n1] [op] [n2]
     mov dh, 8
-    mov dl, 25
+    mov dl, 24
     call cur
     mov ax, [n1]
     call dec_gr
+
     cmp byte [op], 0
     je .wk
     mov al, ' '
@@ -246,40 +267,95 @@ app_calc:
     call put_gr
     mov al, ' '
     call put_gr
+
     cmp byte [st_c], 1
     jb .wk
     mov ax, [n2]
     call dec_gr
+
 .wk:
     mov ah, 0x00
     int 0x16
+
+    ; Проверка выхода (ESC по ASCII, ESC по скан-коду или клавиша Q)
     cmp al, 27
     je desktop
+    cmp ah, 1
+    je desktop
+    cmp al, 'q'
+    je desktop
+    cmp al, 'Q'
+    je desktop
+
+    ; Сброс (C)
     cmp al, 'c'
     je app_calc
+    cmp al, 'C'
+    je app_calc
+
+    ; Backspace (стереть последнюю цифру)
+    cmp al, 0x08
+    je .calc_bksp
+
+    ; Проверка цифр '0'..'9'
     cmp al, '0'
     jb .co
     cmp al, '9'
     ja .co
+
     sub al, '0'
     xor ah, ah
-    mov bx, ax
+    mov cx, ax          ; CX = новая цифра (0..9)
+
+    cmp byte [st_c], 2
+    jne .add_dig
+    ; После нажатия "=" ввод новой цифры начинает новый пример
+    mov word [n1], 0
+    mov word [n2], 0
+    mov byte [op], 0
+    mov byte [st_c], 0
+
+.add_dig:
     cmp byte [st_c], 1
     je .d2
     mov ax, [n1]
-    mov dx, 10
-    mul dx
-    add ax, bx
+    cmp ax, 6000
+    ja .rc
+    mov bx, 10
+    mul bx
+    add ax, cx
     mov [n1], ax
     jmp .rc
+
 .d2:
     mov ax, [n2]
-    mov dx, 10
-    mul dx
-    add ax, bx
+    cmp ax, 6000
+    ja .rc
+    mov bx, 10
+    mul bx
+    add ax, cx
     mov [n2], ax
     jmp .rc
+
+.calc_bksp:
+    cmp byte [st_c], 1
+    je .bk2
+    mov ax, [n1]
+    xor dx, dx
+    mov bx, 10
+    div bx
+    mov [n1], ax
+    jmp .rc
+.bk2:
+    mov ax, [n2]
+    xor dx, dx
+    mov bx, 10
+    div bx
+    mov [n2], ax
+    jmp .rc
+
 .co:
+    ; Знаки операций (+, -, *, /)
     cmp al, '+'
     je .so
     cmp al, '-'
@@ -288,16 +364,22 @@ app_calc:
     je .so
     cmp al, '/'
     je .so
+
+    ; Подсчет результата (Enter или =)
     cmp al, 0x0D
     je .ev
     cmp al, '='
     je .ev
     jmp .wk
+
 .so:
     mov [op], al
     mov byte [st_c], 1
     jmp .rc
+
 .ev:
+    cmp byte [op], 0
+    je .wk
     mov ax, [n1]
     mov bx, [n2]
     mov cl, [op]
@@ -331,7 +413,7 @@ app_calc:
     mov [n1], ax
     mov word [n2], 0
     mov byte [op], 0
-    mov byte [st_c], 0
+    mov byte [st_c], 2
     jmp .rc
 
 ; === UTILS & DATA ===
@@ -441,7 +523,7 @@ cmp_s:
     stc
     ret
 
-top_txt  db ' linesOS v1.2 | Apps: clock, notepad, calc', 0
+top_txt  db ' linesOS v1.3 | Apps: clock, notepad, calc', 0
 hint_txt db 'Commands: clock | notepad | calc | reboot | shutdown', 0
 prm_txt  db 'linesOS>', 0
 s_clock  db 'clock', 0
@@ -449,7 +531,7 @@ s_note   db 'notepad', 0
 s_calc   db 'calc', 0
 s_reb    db 'reboot', 0
 s_off    db 'shutdown', 0
-t_clock  db ' [ Clock / Timer / Alarm ] [ESC] ', 0
+t_clock  db ' [ Clock / Timer / Alarm ] [ESC / Q]', 0
 l_time   db 'Time: ', 0
 l_tmr    db 'Timer:', 0
 l_alm    db 'Alarm:', 0
@@ -457,9 +539,9 @@ l_clk_h  db '[T] Start/Stop [R] Reset [A] +1m', 0
 s_sec    db 's  ', 0
 s_ring   db 'ALARM!', 0
 t_note   db ' [ Notepad ] [ESC: Exit] ', 0
-t_calc   db ' [ Calculator ] [ESC] ', 0
-c_h1     db 'Keys: [0-9] [+ - * /]', 0
-c_h2     db '[Enter/=] Result [C] Clear', 0
+t_calc   db ' [ Calculator ]          [ESC / Q] ', 0
+c_h1     db 'Keys: [0-9] [+ - * /] [Bksp]', 0
+c_h2     db '[Enter / =] Result   [C] Clear', 0
 
 ch_v     db 0
 cm_v     db 0
