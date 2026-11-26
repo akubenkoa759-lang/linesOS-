@@ -104,4 +104,22 @@ run_cmd:
     mov byte [buf], 0
     jmp cmd_loop
 
-do_reb
+do_reb:
+    jmp 0xFFFF:0x0000
+
+do_off:
+    mov ax, 0x5301
+    xor bx, bx
+    int 0x15
+    mov ax, 0x530E
+    xor bx, bx
+    mov cx, 0x0102
+    int 0x15
+    mov ax, 0x5307
+    mov bx, 1
+    mov cx, 3
+    int 0x15
+    cli
+    hlt
+
+%include "apps.asm"
