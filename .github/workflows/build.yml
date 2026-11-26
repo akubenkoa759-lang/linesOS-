@@ -1,0 +1,18 @@
+name: Build linesOS
+on: [push, workflow_dispatch]
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: sudo apt-get update && sudo apt-get install -y nasm
+      - run: |
+          nasm -f bin boot.asm -o boot.bin
+          nasm -f bin kernel.asm -o kernel.bin
+          dd if=/dev/zero of=linesOS.img bs=1024 count=1440
+          dd if=boot.bin of=linesOS.img conv=notrunc
+          dd if=kernel.bin of=linesOS.img bs=512 seek=1 conv=notrunc
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linesOS-disk
+          path: linesOS.img
